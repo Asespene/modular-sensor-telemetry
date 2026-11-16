@@ -184,7 +184,7 @@ monitor_speed = 115200
 ## 6. Daily Workflow Cheat Sheet (GUI & Terminal)
 
 ### 6.1 Opening a Project Correctly in VS Code
-> **Important Rule**: Always open the folder that directly contains `platformio.ini` (for example, `code ~/Documents/code/projects/pipeline-range-telemetry-node/firmware`), OR use **Alien Icon (Left Sidebar) -> Quick Access -> PIO Home -> Open -> Open Project** to select `firmware/`.
+> **Important Rule**: Always open the folder that directly contains `platformio.ini` (for example, `code ~/Documents/code/projects/modular-sensor-telemetry/firmware`), OR use **Alien Icon (Left Sidebar) -> Quick Access -> PIO Home -> Open -> Open Project** to select `firmware/`.
 > If VS Code is opened at a parent folder that does not contain `platformio.ini` at its root, the PlatformIO bottom toolbar and C++ `Arduino.h` IntelliSense won't activate automatically.
 
 ### 6.2 VS Code Bottom Status Bar Controls vs. Terminal CLI
@@ -202,7 +202,7 @@ monitor_speed = 115200
 
 ### 6.3 Multi-Project Repository Commands (Running from Repo Root with `-d`)
 
-When your terminal is at the repository root (`pipeline-range-telemetry-node/`), use `-d <project-dir>` to target either the main telemetry firmware or any side component experiment in `arduino_practice/Arduino/Components/`:
+When your terminal is at the repository root (`modular-sensor-telemetry/`), use `-d <project-dir>` to target either the main telemetry firmware or any side component experiment in `arduino_practice/Arduino/Components/`:
 
 ```bash
 # Main pipeline firmware (firmware/)
