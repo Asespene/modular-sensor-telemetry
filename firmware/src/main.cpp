@@ -10,6 +10,9 @@ void setup() {
 
   delay(1500);
 
+  
+
+  /* 
   const int testDistanceData[] = {300, 75, 20, 5, -1, 250};
 
   const int arraySize = sizeof(testDistanceData) / sizeof(testDistanceData[0]);
@@ -40,6 +43,8 @@ void setup() {
   }
 
   Serial.println("Test done!");
+
+  */
 }
 
 void loop() {
@@ -71,7 +76,6 @@ void loop() {
 
   Serial.print("Transition Counts: ");
   Serial.println(liveRecords.transitionsCount);
-
 
 
   Serial.println();
