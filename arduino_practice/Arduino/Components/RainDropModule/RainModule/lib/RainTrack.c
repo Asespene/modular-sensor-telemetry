@@ -70,3 +70,31 @@ void updateHistory(RainSensorData* data, SensorHistory* record) {
     }
 
 }
+
+#define EEPROM_MAGIC 0x524E // 'RN' magic bytes to check if EEPROM has valid data
+#define EEPROM_ADDR_MAGIC 0
+#define EEPROM_ADDR_DATA  2
+
+bool saveHistory(const SensorHistory* record) {
+    if (!record) return false;
+    uint16_t magic = EEPROM_MAGIC;
+    eeprom_update_word((uint16_t*)EEPROM_ADDR_MAGIC, magic);
+    eeprom_update_block((const void*)record, (void*)EEPROM_ADDR_DATA, sizeof(SensorHistory));
+    return true;
+}
+
+bool loadHistory(SensorHistory* record) {
+    if (!record) return false;
+    uint16_t magic = eeprom_read_word((const uint16_t*)EEPROM_ADDR_MAGIC);
+    if (magic != EEPROM_MAGIC) {
+        // First run: initialize clean history
+        record->transitionCount = 0;
+        record->errorCount = 0;
+        record->rainCount = 0;
+        record->prevState = ERROR;
+        record->consecutiveDry = 0;
+        return false;
+    }
+    eeprom_read_block((void*)record, (const void*)EEPROM_ADDR_DATA, sizeof(SensorHistory));
+    return true;
+}
