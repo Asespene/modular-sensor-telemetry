@@ -28,6 +28,10 @@ typedef struct {
 } SensorHistory;
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 RainSensorData classifyState(int reading);
 
 void updateHistory(RainSensorData* data, SensorHistory* record);
@@ -36,6 +40,9 @@ void updateHistory(RainSensorData* data, SensorHistory* record);
 bool saveHistory(const SensorHistory* record);
 bool loadHistory(SensorHistory* record);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

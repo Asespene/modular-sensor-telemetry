@@ -1,0 +1,4 @@
+{"schema_version":1,"device_id":"node-02","sequence":42,"uptime_ms":0,"sensor_id":"pot-02","sensor_type":"potentiometer","metric":"raw_adc","value":1,"unit":"count","quality":"ok"}
+{"schema_version":1,"device_id":"node-02","sequence":43,"uptime_ms":1000,"sensor_id":"pot-02","sensor_type":"potentiometer","metric":"raw_adc","value":1022,"unit":"count","quality":"ok"}
+{"schema_version":1,"device_id":"node-02","sequence":44,"uptime_ms":2000,"sensor_id":"pot-02","sensor_type":"potentiometer","metric":"raw_adc","value":null,"unit":"count","quality":"unavailable"}
+{"quality":"ok","unit":"count","value":512,"metric":"raw_adc","sensor_type":"potentiometer","sensor_id":"pot-02","uptime_ms":3000,"sequence":45,"device_id":"node-02","schema_version":1}
