@@ -30,3 +30,21 @@ Contains 9 lines that must each be rejected with line-specific errors:
 | **7** | `[1, 2, 3]` (JSON Array) | **Top-Level Structural Check:** Valid JSON syntax, but it's an array instead of a JSON object (`dict`). | `Top-level record must be a JSON object` |
 | **8** | `"value": true` (Boolean) | **The Python `isinstance` Trap:** In Python, `isinstance(True, int)` is `True` because `bool` inherits from `int`. Must reject booleans. | `quality 'ok' requires a numeric value, got bool` |
 | **9** | Unfinished JSON `{"schema_ver...` | **Syntax / Buffer Truncation:** Mimics what happens when an Arduino `Serial.println()` gets cut off by a serial timeout or reset mid-print. Tests `json.JSONDecodeError` handling so the validator doesn't crash. | `malformed JSON: Expecting ...` |
+
+---
+
+## 3. `tests/fixtures/uno-live-capture.ndjson`
+Live hardware capture proving the end-to-end path (`Potentiometer -> Arduino Uno -> Serial JSON -> NDJSON file -> Python validator`):
+
+- **Hardware & Firmware:** Arduino Uno running `firmware/src/main.cpp` (`readPotentiometer(A0)` with `jsonBuffer[256]`, `9600` baud, 1 record/sec). `readPotentiometer()` treats `0..1023` as valid `"ok"` readings (`is_valid` is an adapter ADC-range sanity check, not physical disconnection detection).
+- **Capture Method:** Read 25 newline-terminated JSON records directly from `/dev/ttyACM0` using `pyserial` (waiting 2s after port open for the Uno auto-reset and calling `reset_input_buffer()` to discard any pre-reset fragments) while sweeping the potentiometer across its full range (`0` to `1023`):
+  ```bash
+  python3 -c 'import serial, time; ser=serial.Serial("/dev/ttyACM0",9600,timeout=5); time.sleep(2); ser.reset_input_buffer(); f=open("tests/fixtures/uno-live-capture.ndjson","w",encoding="utf-8"); [print(f"[{i+1}/25] {l}") or f.write(l+"\n") for i in range(25) for l in [next(x for x in iter(lambda: ser.readline().decode("utf-8","replace").strip(), None) if x)]]; f.close(); ser.close()'
+  ```
+- **Observed Contents:** 25 records, `sequence` `0`–`24` with no gaps, monotonically increasing `uptime_ms` (`1500`–`28561`), and `value` sweeping `0` → `289` → `698` → `922` → `1022` → `1023` (all `quality: "ok"`).
+- **Validation Command & Result:**
+  ```bash
+  python3 tools/validate_telemetry.py tests/fixtures/uno-live-capture.ndjson
+  # Checked 25 records: 25 passed, 0 failed.
+  ```
+
