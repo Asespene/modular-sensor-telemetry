@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#define ANALOG_PIN A0
+
 extern "C" {
   #include "proximity.h"
 }
@@ -17,6 +19,15 @@ metric
 value
 */
 
+
+// Shared sensor acquisition result.
+// is_valid indicates the adapter's checks passed (not guaranteed physical connection).
+// When is_valid is false, value is only an initialized placeholder and must not be serialized as a measurement.
+typedef struct {
+  int value;
+  bool is_valid;
+} SensorReading;
+
 //schema table example
 typedef struct {
   int schema_version;
@@ -32,6 +43,10 @@ typedef struct {
 } TelemetryRecord;
 
 bool transformToJson(const TelemetryRecord* record, char* buffer, size_t bufferSize);
+
+SensorReading readPotentiometer(uint8_t pin);
+
+SensorReading unavailableTest();
 
 //instantiate a current record struct as a hard coded test
 static TelemetryRecord currentRecord;
@@ -52,11 +67,15 @@ void setup() {
 }
 
 void loop() {
+
+  SensorReading reading = readPotentiometer(ANALOG_PIN);
+
   //live sensor data being read
-  currentRecord.value = analogRead(A0);
+  currentRecord.value = reading.value;
   //returns the elapsed number of time in milliseconds when the Arduino board began running
   currentRecord.uptime_ms = millis();
-  currentRecord.quality = "ok";
+  
+  currentRecord.quality = reading.is_valid ? "ok" : "unavailable";
 
   char jsonBuffer[256];
   bool writeStatus = transformToJson(&currentRecord, jsonBuffer, sizeof(jsonBuffer));
@@ -69,41 +88,24 @@ void loop() {
 
   delay(1000);
 
-
-  /*
-  int distanceValue = map(currentRecord.value, 0, 1023, -1000, 1000);
-
-  SensorData data = classifyDistance(distanceValue);
-  static SensorHistory liveRecords = {};
-
-  updateHistory(&data, &liveRecords);
-
-  static size_t counter = 0;
-
-
-  
-  Serial.print("Data #: ");
-  Serial.println(counter);
-
-  Serial.print("Distance: ");
-  Serial.println(data.distance);
-
-  Serial.print("STATE: ");
-  Serial.println(enumToString(data.identifier));
-
-  Serial.print("Valid Reading: ");
-  Serial.println(liveRecords.validReadings);
-
-  Serial.print("Invalid Reading: ");
-  Serial.println(liveRecords.invalidReadings);
-
-  Serial.print("Transition Counts: ");
-  Serial.println(liveRecords.transitionsCount);
-
-
-  Serial.println();
-  */
 }
+
+
+SensorReading readPotentiometer(uint8_t pin) {
+  int rawValue = analogRead(pin);
+  //valid case and invalid case
+  if (rawValue >= 0 && rawValue <= 1023) {
+    return {rawValue, true};
+  } else {
+    return {0, false};
+  }
+}
+
+//test the unavailable case
+SensorReading unavailableTest() {
+  return {0, false};
+}
+
 
 
 bool transformToJson(const TelemetryRecord* record, char* buffer, size_t bufferSize) {
