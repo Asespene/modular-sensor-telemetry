@@ -1,38 +1,36 @@
 # Modular Sensor Telemetry Platform
 
-An embedded-to-web telemetry project designed around configurable sensor inputs, a shared numeric measurement contract, a Python/FastAPI backend, persistent storage, and a live React/TypeScript dashboard.
+An end-to-end embedded-to-web telemetry system built around a shared JSON measurement contract, modular firmware sensor adapters, a Python/FastAPI ingestion backend with SQLite persistence, and a planned live React/TypeScript dashboard.
 
-The architecture separates sensor-specific hardware acquisition from portable C processing, backend validation, storage, and frontend visualization so that additional supported sensors can reuse the same end-to-end pipeline.
+The architecture decouples **sensor acquisition** (`SensorReading`) from **envelope serialization** (`transformToJson`), **contract validation** (`backend/validation.py`), **persistent storage** (`backend/storage.py`), and **visualization** so new sensors and boards can plug into the same pipeline without rewriting downstream layers.
 
 ---
 
-## Project Status
+## End-to-End Architecture
 
-This repository distinguishes **completed, verified work** from **planned milestones**.
-
-### Confirmed Completed Work
-- **Portable C Proximity & History Module (`c-prac/distance-classifier/`, `firmware/lib/proximity/`):**
-  - Pure C implementation (`proximity.h`, `proximity.c`) with zero Arduino dependencies.
-  - Defines `ProximityState` (`FAR`, `MEDIUM`, `NEAR`, `TOO_CLOSE`, `ERROR`), `SensorData`, and `SensorHistory`.
-  - Implements `classifyDistance()`, `enumToString()`, and pointer-based `updateHistory()` tracking valid readings, invalid readings, and state transitions without dynamic memory allocation (`malloc`/`free`).
-  - Verified on desktop via standalone demo (`main.c`) and automated `assert`-based unit tests (`test_proximity.c`).
-- **Arduino Uno + Potentiometer Integration (`firmware/`):**
-  - Integrates the portable C `proximity` library into an Arduino/PlatformIO sketch (`firmware/src/main.cpp`) using `extern "C"`.
-  - Reads live analog input (`A0`) from a potentiometer, maps readings into test range values (including fault-injection negative values), updates `SensorHistory`, and prints classifications and counters over Serial.
-- **Arduino Foundations & Checkpoints (`arduino_practice/Arduino/`):**
-  - Introductory GPIO, PWM, analog input, and binary LED state indicator exercises (`checkpoints/001-checkpoint-ledStateIndicator`).
-- **Component Side-Experiments (`arduino_practice/Arduino/Components/`):**
-  - Dedicated workspace for testing standalone Arduino sensor/component implementations (`UltrasonicSensor`, `RainDropModule` with `RainTrack.c` / `RainTrack.h`) independently of the main telemetry pipeline.
-  - *Ultrasonic sensor note:* Produced short-range readings (~1–4 inches) and later appeared stuck at a fixed reading. The root cause is currently unverified (neither confirmed broken hardware nor confirmed normal behavior). Main pipeline development proceeds using the verified potentiometer input while preserving these component experiments.
-
-### Planned (Not Yet Implemented)
-- Newline-delimited JSON telemetry output over Serial.
-- Python CLI validator (`tools/validate_telemetry.py`) and sample captures.
-- Python/FastAPI ingestion server, validation, and persistent database storage.
-- ESP32 Wi-Fi / HTTPS telemetry producer (or optional local USB-to-HTTP Serial bridge).
-- Live React/TypeScript dashboard with WebSocket updates.
-- Second verified sensor adapter reusing the common pipeline.
-- Cloud deployment on Render.
+```text
+Physical Sensor (Potentiometer verified; VL53L1X / Rain module planned)
+      │
+      ▼
+Firmware Sensor Adapter (firmware/src/main.cpp)
+      ├── readPotentiometer() -> SensorReading { value, is_valid }
+      ├── Envelope assembly (device_id, sensor_id, sequence, uptime_ms, quality)
+      └── transformToJson() -> 1 NDJSON line/sec over Serial (ESP32 Wi-Fi planned)
+      │
+      ▼
+Contract Validation & Ingestion (backend/ & tools/)
+      ├── Shared contract rules: backend/validation.py (validate_record)
+      ├── CLI batch validator:   tools/validate_telemetry.py
+      └── HTTP ingestion API:    POST /telemetry (stamps UTC received_at)
+      │
+      ▼
+Persistent Storage (backend/storage.py — SQLite)
+      ├── Stores accepted records (never stores rejected payloads)
+      └── Queries latest state:  GET /devices/{device_id}/sensors/{sensor_id}/latest
+      │
+      ▼
+Live Dashboard (Planned — React + TypeScript + WebSockets)
+```
 
 ---
 
@@ -41,133 +39,120 @@ This repository distinguishes **completed, verified work** from **planned milest
 ```text
 .
 ├── README.md
-├── .gitignore
-├── c-prac/
-│   └── distance-classifier/        # Desktop-compiled portable C module & unit tests
-│       ├── proximity.h
-│       ├── proximity.c
-│       ├── main.c
-│       └── test_proximity.c
-├── firmware/                       # PlatformIO firmware (Uno verified, ESP32 planned)
+├── PLATFORMIO_SETUP_GUIDE.md
+├── backend/                        # FastAPI ingestion API, contract validation & SQLite storage
+│   ├── __init__.py
+│   ├── app.py                      # FastAPI routes (GET /health, POST /telemetry, GET .../latest)
+│   ├── storage.py                  # SQLite schema (init_db, insert_telemetry, get_latest_record)
+│   └── validation.py               # Single-source-of-truth record validator (validate_record)
+├── tools/
+│   └── validate_telemetry.py       # CLI NDJSON validator reusing backend.validation
+├── tests/
+│   ├── db/
+│   │   └── test_db.py              # SQLite storage layer pytest suite
+│   └── fixtures/                   # Valid, invalid, and live Uno Serial NDJSON captures
+│       ├── README.md
+│       ├── potentiometer-valid.ndjson
+│       ├── telemetry-invalid.ndjson
+│       └── uno-live-capture.ndjson
+├── firmware/                       # PlatformIO firmware (Arduino Uno verified, ESP32 planned)
 │   ├── platformio.ini
-│   ├── lib/
-│   │   └── proximity/              # Shared portable C proximity module
-│   └── src/
-│       └── main.cpp                # Live potentiometer + C classifier loop
-└── arduino_practice/
-    └── Arduino/
-        ├── checkpoints/            # Hardware state indicator checkpoint & learning log
-        ├── mini_hw/                # Introductory Arduino sketches
-        └── Components/             # Standalone sensor/component side-projects
-            ├── RainDropModule/
-            └── UltrasonicSensor/
+│   ├── lib/proximity/              # Portable C proximity classifier module
+│   └── src/main.cpp                # SensorReading adapter + JSON Serial emitter
+├── c-prac/
+│   └── distance-classifier/        # Standalone portable C classifier & unit tests
+└── arduino_practice/               # Standalone hardware experiments & checkpoints
 ```
 
 ---
 
-## Target System Architecture
+## Shared Telemetry Contract (Schema v1)
 
-```text
-Supported Sensor Input (Potentiometer first, second verified sensor later)
-      │
-      ▼
-Acquisition Firmware (Uno Serial prototype → ESP32 Wi-Fi node)
-      │  (Optional portable C processing / state tracking)
-      ▼
-Common JSON Telemetry Record
-      │  HTTPS POST
-      ▼
-Python / FastAPI Backend
-      ├── Schema & quality/value consistency validation
-      ├── Server receipt timestamp (received_at)
-      ├── Persistent storage (latest state + bounded history)
-      └── WebSocket broadcast (/ws/telemetry)
-      │
-      ▼
-React + TypeScript Dashboard
-```
-
-### Technology Stack
-
-| Layer | Technology | Status |
-| :--- | :--- | :--- |
-| Portable Logic | C (`proximity.h` / `proximity.c`) | Implemented & tested |
-| Firmware | C/C++, Arduino framework, PlatformIO | Uno + potentiometer working; ESP32 planned |
-| Telemetry Format | Newline-delimited JSON (Serial) / JSON over HTTPS | Planned (Next milestone) |
-| Backend | Python, FastAPI, Pydantic | Planned |
-| Storage | Local persistence → PostgreSQL / Supabase | Planned |
-| Frontend | React, TypeScript, WebSockets | Planned |
-| Hosting | Render (Web Service + Static Site) | Planned |
-
----
-
-## Implemented C Module Reference (`proximity`)
-
-The current C classifier (`classifyDistance(int distance)`) uses the following integer bounds:
-
-| `ProximityState` | Condition | `isValid` |
-| :--- | :--- | :--- |
-| `TOO_CLOSE` | `0 <= distance <= 10` | `true` |
-| `NEAR` | `11 <= distance <= 30` | `true` |
-| `MEDIUM` | `31 <= distance <= 100` | `true` |
-| `FAR` | `101 <= distance <= 400` | `true` |
-| `ERROR` | `distance < 0` or `distance > 400` | `false` |
-
-### Building and Running the Desktop C Tests
-
-From `c-prac/distance-classifier/`:
-
-```bash
-gcc -Wall -Wextra -std=c11 proximity.c test_proximity.c -o test
-./test
-
-gcc -Wall -Wextra -std=c11 proximity.c main.c -o main
-./main
-```
-
----
-
-## Proposed Shared Telemetry Contract (Version 1)
-
-Each emitted telemetry record represents one numeric measurement using a sensor-neutral schema:
+Every telemetry record contains **10 required fields**:
 
 ```json
 {
   "schema_version": 1,
   "device_id": "node-01",
-  "boot_id": "session-001",
-  "sequence": 42,
-  "uptime_ms": 21000,
+  "sequence": 15,
+  "uptime_ms": 18391,
   "sensor_id": "pot-01",
   "sensor_type": "potentiometer",
   "metric": "raw_adc",
-  "value": 620,
+  "value": 289,
   "unit": "count",
-  "quality": "ok",
-  "derived_state": null
+  "quality": "ok"
 }
 ```
 
-### Core Contract Rules
-- **Honest metric labeling:** Raw potentiometer counts use `"metric": "raw_adc"` and `"unit": "count"`. If mapped to a simulated distance for classifier testing, label the metric explicitly (e.g., `"simulated_distance"`).
-- **Explicit fault representation:** Invalid or unavailable readings use `"value": null` (or documented fault semantics) and a non-`ok` `"quality"` rather than silently substituting `0`.
-- **Three independent health dimensions:**
-  1. **Measurement quality:** Whether the sensor reading itself is valid (`quality`, `derived_state`).
-  2. **Device-to-backend freshness:** `NO_DATA`, `ONLINE`, `STALE`, or `OFFLINE` computed from the backend's `received_at` timestamp.
-  3. **Browser-to-backend connectivity:** Whether the dashboard WebSocket connection is active.
+When accepted by `POST /telemetry`, the backend appends an authoritative UTC receipt timestamp:
+
+```json
+{
+  "received_at": "2026-11-24T19:54:15.269864+00:00"
+}
+```
+
+### Contract Invariants
+- **Strict types:** `schema_version` (`1`), `sequence` (`>= 0`), and `uptime_ms` (`>= 0`) must be strict integers (booleans rejected).
+- **Non-empty identifiers:** `device_id` and `sensor_id` must be non-empty strings.
+- **Supported sensor metadata:** Currently `sensor_type: "potentiometer"`, `metric: "raw_adc"`, `unit: "count"`.
+- **Quality & value consistency:**
+  - `"quality": "ok"` requires a finite numeric `value` within `[0, 1023]` (`0` and `1023` are valid boundary readings).
+  - `"quality": "unavailable"` requires `"value": null`.
+- **Formatting failure vs. unavailable measurement:**
+  - Sensor read unusable (`is_valid == false`) → firmware emits a complete JSON record with `"quality": "unavailable", "value": null`.
+  - Buffer/formatting failure (`transformToJson()` returns `false`) → firmware emits nothing rather than a truncated line.
 
 ---
 
-## Implementation Roadmap
+## Quick Start & Commands
 
-- [x] **Milestone A — Preserve Completed Work:** Checkpoint portable C module, unit tests, Uno + potentiometer integration, and documented ultrasonic experiment status.
-- [ ] **Milestone B — Finalize Common Telemetry Format:** Lock field names, metric/unit pairs, quality semantics, and sequence behavior.
-- [ ] **Milestone C — Emit JSON over Serial:** Output one parseable JSON telemetry record per line from the working Uno + potentiometer setup.
-- [ ] **Milestone D — Validate Captured Records with Python:** Build `tools/validate_telemetry.py` and verify captured valid/fault samples in `docs/examples/telemetry-samples.jsonl`.
-- [ ] **Milestone E — Build FastAPI Locally:** Implement `GET /api/health`, `POST /api/telemetry`, and latest-reading retrieval with Pydantic validation.
-- [ ] **Milestone F — Add Persistence:** Persist accepted readings across restarts and support bounded recent-history queries.
-- [ ] **Milestone G — Connect a Real Producer:** Stream live records via a local Serial-to-HTTP bridge or directly from an ESP32 over Wi-Fi.
-- [ ] **Milestone H — Build the Local Dashboard:** Display sensor cards, measurement quality, device freshness, WebSocket status, and recent history.
-- [ ] **Milestone I — Add Second Supported Adapter:** Integrate a second verified sensor reusing the same telemetry schema, backend, and dashboard.
-- [ ] **Milestone J — Deploy:** Deploy FastAPI and the React dashboard to Render with durable storage and authenticated ingestion.
-- [ ] **Milestone K — Release Version 1:** Complete end-to-end documentation, wiring guides, test results, and tagged release.
+### 1. Firmware (PlatformIO / Arduino Uno)
+```bash
+# Compile firmware
+pio run -d firmware
+
+# Flash to connected Arduino Uno
+pio run -d firmware -t upload
+```
+
+### 2. Python Environment & CLI Validator
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install fastapi uvicorn httpx pytest
+
+# Validate NDJSON fixtures & live Uno capture
+python3 tools/validate_telemetry.py tests/fixtures/potentiometer-valid.ndjson
+python3 tools/validate_telemetry.py tests/fixtures/telemetry-invalid.ndjson
+python3 tools/validate_telemetry.py tests/fixtures/uno-live-capture.ndjson
+```
+
+### 3. FastAPI Backend & Tests
+```bash
+# Run the local API server (http://127.0.0.1:8000 / http://127.0.0.1:8000/docs)
+uvicorn backend.app:app --reload
+
+# Run automated pytest suite
+python -m pytest -v
+```
+
+### 4. Portable C Module Tests
+```bash
+cd c-prac/distance-classifier
+gcc -Wall -Wextra -std=c11 proximity.c test_proximity.c -o test && ./test
+```
+
+---
+
+## Project Milestones
+
+- [x] **Milestone A — Portable C & Hardware Foundations:** Pure C proximity classifier (`proximity.c`/`proximity.h`), desktop unit tests, and initial Uno integration.
+- [x] **Milestone B — Telemetry Contract (v1):** Locked 10-field JSON schema, quality/value rules, and sequence semantics.
+- [x] **Milestone C — Modular Firmware JSON Output:** Implemented `SensorReading` boundary, `readPotentiometer()`, and safe `transformToJson()` over Serial.
+- [x] **Milestone D — Python Validator & Live Uno Capture:** Built `tools/validate_telemetry.py`, test fixtures, and validated a 25-record live Uno potentiometer sweep (`tests/fixtures/uno-live-capture.ndjson`).
+- [ ] **Milestone E/F — FastAPI Ingestion & SQLite Persistence (In Progress):** Shared `backend/validation.py`, `POST /telemetry`, SQLite `backend/storage.py`, `GET /devices/{device_id}/sensors/{sensor_id}/latest`, and `pytest` coverage.
+- [ ] **Milestone G — Live Producer Bridge:** Stream real-time records via a Serial-to-HTTP bridge (and later ESP32 over Wi-Fi).
+- [ ] **Milestone H — Live React/TypeScript Dashboard:** Modular sensor cards, freshness tracking (`ONLINE` / `STALE` / `OFFLINE`), and WebSocket updates.
+- [ ] **Milestone I — Second Sensor Adapter & Cloud Deployment:** Add a second verified sensor and deploy to Render.
