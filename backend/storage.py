@@ -64,7 +64,7 @@ def get_latest_record(device_id: str, sensor_id: str, db_path: str | Path = DEFA
 
     try:
         #configuration on how sqlite should return each row using the fetchone function
-        conn.row_factory = sqlite3.row
+        conn.row_factory = sqlite3.Row
         #we are retreiving the query result set and assigning it to cursor so it acts as pointer to the result of the query
         cursor = conn.execute(
             """
