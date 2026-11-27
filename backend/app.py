@@ -62,7 +62,7 @@ async def writeTelemetryRecord(request: Request):
 #read door to our backend.
 #fetch the latest record row of the specific sensor/device
 @app.get("/devices/{device_id}/sensors/{sensor_id}/latest")
-async def fetchLatestTelemtry(device_id: str, sensor_id: str):
+async def fetchLatestTelemtry(device_id: str, sensor_id: str) -> dict:
     latestRecord = get_latest_record(device_id, sensor_id, DB_PATH)
 
     if (not latestRecord):
